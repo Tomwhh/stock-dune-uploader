@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 # ---------------- CONFIG ----------------
 START_DATE = "2022-01-01"
 SYMBOLS = ["EXOD", "PLTR", "VOO", "HOOD"]
-ADD_D_VARIANT = True
 CSV_FILENAME = "stock_prices.csv"  # Name of CSV file uploaded to Dune
 
 # ---------------- SECRETS ----------------
@@ -60,47 +59,46 @@ def fetch_symbol_data(symbol):
     df["close"] = df["close"].astype(float)
     return df[["date", "symbol", "close"]]
 
-def fill_missing_dates(df, symbols, start_date):
-    """Fill missing dates per symbol with forward-fill."""
-    start = pd.to_datetime(start_date)
-    end = pd.to_datetime(datetime.now(timezone.utc).date())
-    all_days = pd.date_range(start, end, freq="D").date
-    all_combinations = pd.MultiIndex.from_product([all_days, symbols], names=["date", "symbol"])
-    full_df = pd.DataFrame(index=all_combinations).reset_index()
-    full_df = full_df.merge(df, on=["date", "symbol"], how="left")
-    full_df["close"] = full_df.groupby("symbol")["close"].ffill()
-    return full_df
+def fill_missing_dates(df, symbols):
+    """Fill missing dates per symbol with forward-fill but only from first available date."""
+    all_filled = []
 
-def add_d_variant(df):
-    """Add a .d variant of each symbol."""
-    df_d = df.copy()
-    df_d["symbol"] = df_d["symbol"] + ".d"
-    return pd.concat([df, df_d], ignore_index=True)
+    for symbol in symbols:
+        symbol_df = df[df["symbol"] == symbol].sort_values("date").copy()
+        if symbol_df.empty:
+            continue
+
+        first_date = symbol_df["date"].min()
+        end = pd.to_datetime(datetime.now(timezone.utc).date())
+        all_days = pd.date_range(first_date, end, freq="D").date
+        full_index = pd.MultiIndex.from_product([all_days, [symbol]], names=["date", "symbol"])
+        full_df = pd.DataFrame(index=full_index).reset_index()
+        full_df = full_df.merge(symbol_df, on=["date", "symbol"], how="left")
+        full_df["close"] = full_df.groupby("symbol")["close"].ffill()
+        # Drop any remaining rows that are still null (before stock existed)
+        full_df = full_df.dropna(subset=["close"])
+        all_filled.append(full_df)
+
+    return pd.concat(all_filled, ignore_index=True)
 
 def upload_to_dune_csv(df, api_key, filename):
     """Upload DataFrame as CSV to Dune using JSON payload."""
-    # Clean column names
     df.columns = [c.replace(" ", "_").lower() for c in df.columns]
 
-    # Convert DataFrame to CSV string
     csv_buffer = io.StringIO()
     df.to_csv(csv_buffer, index=False)
     csv_data = csv_buffer.getvalue()
 
-    # Dune API URL and headers
     url = "https://api.dune.com/api/v1/table/upload/csv"
     headers = {"X-DUNE-API-KEY": api_key}
 
-    # JSON payload (correct method)
     payload = {
         "table_name": "stock_prices",
         "description": "Daily stock prices",
         "data": csv_data
     }
 
-    # Send POST request
     r = requests.post(url, headers=headers, json=payload)
-
     if r.status_code != 200:
         raise ValueError(f"Upload failed: {r.status_code} {r.text}")
     print("Upload successful:", r.text)
@@ -112,10 +110,7 @@ if __name__ == "__main__":
     all_data = pd.concat([fetch_symbol_data(s) for s in SYMBOLS], ignore_index=True)
 
     print("Filling missing dates...")
-    full_data = fill_missing_dates(all_data, SYMBOLS, START_DATE)
-
-    if ADD_D_VARIANT:
-        full_data = add_d_variant(full_data)
+    full_data = fill_missing_dates(all_data, SYMBOLS)
 
     print(f"Prepared {len(full_data)} rows for upload")
     print(f"Uploading CSV file '{CSV_FILENAME}' to Dune...")
