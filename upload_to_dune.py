@@ -60,7 +60,7 @@ def fetch_symbol_data(symbol):
     return df[["date", "symbol", "close"]]
 
 def fill_missing_dates(df, symbols):
-    """Fill missing dates per symbol with forward-fill but only from first available date."""
+    """Fill missing dates per symbol with forward-fill starting from first available date."""
     all_filled = []
 
     for symbol in symbols:
@@ -69,26 +69,34 @@ def fill_missing_dates(df, symbols):
             continue
 
         first_date = symbol_df["date"].min()
-        end = pd.to_datetime(datetime.now(timezone.utc).date())
-        all_days = pd.date_range(first_date, end, freq="D").date
+        end_date = pd.to_datetime(datetime.now(timezone.utc).date())
+        all_days = pd.date_range(first_date, end_date, freq="D").date
+
         full_index = pd.MultiIndex.from_product([all_days, [symbol]], names=["date", "symbol"])
         full_df = pd.DataFrame(index=full_index).reset_index()
         full_df = full_df.merge(symbol_df, on=["date", "symbol"], how="left")
+
+        # Forward-fill missing close values
         full_df["close"] = full_df.groupby("symbol")["close"].ffill()
-        # Drop any remaining rows that are still null (before stock existed)
+
+        # Drop any rows still null (before stock existed)
         full_df = full_df.dropna(subset=["close"])
+
         all_filled.append(full_df)
 
     return pd.concat(all_filled, ignore_index=True)
 
 def upload_to_dune_csv(df, api_key, filename):
     """Upload DataFrame as CSV to Dune using JSON payload."""
+    # Clean column names
     df.columns = [c.replace(" ", "_").lower() for c in df.columns]
 
+    # Convert DataFrame to CSV string
     csv_buffer = io.StringIO()
     df.to_csv(csv_buffer, index=False)
     csv_data = csv_buffer.getvalue()
 
+    # Dune API URL and headers
     url = "https://api.dune.com/api/v1/table/upload/csv"
     headers = {"X-DUNE-API-KEY": api_key}
 
