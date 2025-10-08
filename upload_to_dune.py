@@ -25,10 +25,19 @@ if not MARKETSTACK_API_KEY:
     raise ValueError("Set MARKETSTACK_API_KEY as environment variable")
 
 # ---------------- TICKERS ----------------
+# Fetch symbols from Dune
 dune = DuneClient(DUNE_API_KEY)
 query_result = dune.get_latest_result(5617999)
 rows = query_result.result.rows
-SYMBOLS = [row['token_symbol'] for row in rows]
+dune_symbols = [row['token_symbol'] for row in rows]
+
+# Add manual symbols
+manual_symbols = ["EXOD", "C3M", "CSPX", "IB01"]  # Add as many as you want
+SYMBOLS = dune_symbols + manual_symbols
+
+# Optionally remove duplicates
+SYMBOLS = list(set(SYMBOLS))
+
 
 # ---------------- HELPERS ----------------
 def fetch_symbol_data(symbol):
