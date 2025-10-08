@@ -9,10 +9,10 @@ import io
 import requests
 import pandas as pd
 from datetime import datetime, timezone
+from dune_client.client import DuneClient
 
 # ---------------- CONFIG ----------------
 START_DATE = "2022-01-01"
-SYMBOLS = ["EXOD", "PLTR", "VOO", "HOOD"]
 CSV_FILENAME = "stock_prices.csv"  # Name of CSV file uploaded to Dune
 
 # ---------------- SECRETS ----------------
@@ -23,6 +23,12 @@ if not DUNE_API_KEY:
     raise ValueError("Set DUNE_API_KEY as environment variable")
 if not MARKETSTACK_API_KEY:
     raise ValueError("Set MARKETSTACK_API_KEY as environment variable")
+
+# ---------------- TICKERS ----------------
+dune = DuneClient(DUNE_API_KEY)
+query_result = dune.get_latest_result(5617999)
+rows = query_result.result.rows
+SYMBOLS = [row['token_symbol'] for row in rows]
 
 # ---------------- HELPERS ----------------
 def fetch_symbol_data(symbol):
