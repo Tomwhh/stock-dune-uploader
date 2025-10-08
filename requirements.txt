@@ -1,4 +1,4 @@
 pandas
 requests
-dune-client
+dune_client
 
