@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from dune_client.client import DuneClient
 
 # ---------------- CONFIG ----------------
-START_DATE = "2022-01-01"
+START_DATE = "2025-01-01"
 CSV_FILENAME = "stock_prices.csv"  # Name of CSV file uploaded to Dune
 
 # ---------------- SECRETS ----------------
