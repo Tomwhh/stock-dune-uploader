@@ -2,7 +2,7 @@ name: Daily Stock Upload
 
 on:
   schedule:
-    - cron: '0 16 * * *'  # Runs every day at 08:00 UTC
+    - cron: '0 21 * * *'  # Runs every day at 08:00 UTC
   workflow_dispatch:      # Allows manual run
 
 jobs:
