@@ -33,7 +33,7 @@ SYMBOLS = list(set(dune_symbols + manual_symbols))
 def fetch_symbol_data(symbol, start_date):
     """Fetch EOD stock prices from MarketStack for a given symbol, starting from start_date."""
     all_data = []
-    limit = 100
+    limit = 100000000
     offset = 0
     start_date_str = start_date.strftime("%Y-%m-%d")
     while True:
