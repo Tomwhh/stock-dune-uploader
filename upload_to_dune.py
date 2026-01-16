@@ -147,43 +147,58 @@ def upload_to_dune_csv(df, api_key, table_name):
 
 # ---------------- MAIN ----------------
 
+# Replace the MAIN section:
+
 if __name__ == "__main__":
     print("Checking for existing CSV cache...")
 
     if os.path.exists(CSV_FILENAME):
-        existing_df = pd.read_csv(CSV_FILENAME, parse_dates=["date"])
-        last_date = existing_df["date"].max().date()
+        existing_df = pd.read_csv(CSV_FILENAME)
+        existing_df['date'] = pd.to_datetime(existing_df['date']).dt.date
+        last_date = existing_df["date"].max()
         print(f"Last cached date: {last_date}")
     else:
-        existing_df = pd.DataFrame()
+        existing_df = pd.DataFrame(columns=["date", "symbol", "close"])
         last_date = datetime.strptime(START_DATE, "%Y-%m-%d").date()
         print("No existing CSV found. Starting from START_DATE.")
 
     fetch_start_date = last_date + timedelta(days=1)
-    print(f"Fetching new data from {fetch_start_date}...")
-
-    new_data_parts = []
-    for s in SYMBOLS:
-        print(f"Fetching {s}…")
-
-        df_s = fetch_symbol_data(s, fetch_start_date)
-        new_data_parts.append(df_s)
-
-        time.sleep(0.3)  # Slow down between tickers
-
-    new_data = pd.concat(new_data_parts, ignore_index=True)
-
-    if new_data.empty:
-        print("No new data to fetch.")
+    today = datetime.now(timezone.utc).date()
+    
+    # Skip if already up to date
+    if fetch_start_date > today:
+        print(f"Cache is already up to date (last date: {last_date})")
         full_df = existing_df
     else:
-        print(f"Fetched {len(new_data)} new rows. Filling missing dates…")
+        print(f"Fetching new data from {fetch_start_date} to {today}...")
 
-        combined_df = pd.concat([existing_df, new_data], ignore_index=True)
-        full_df = fill_missing_dates(combined_df, SYMBOLS)
+        new_data_parts = []
+        for s in SYMBOLS:
+            print(f"Fetching {s}…")
+            df_s = fetch_symbol_data(s, fetch_start_date)
+            new_data_parts.append(df_s)
+            time.sleep(0.3)
 
-        full_df.to_csv(CSV_FILENAME, index=False)
-        print(f"Updated CSV cache saved ({len(full_df)} rows).")
+        new_data = pd.concat(new_data_parts, ignore_index=True) if new_data_parts else pd.DataFrame()
+
+        if new_data.empty:
+            print("No new data fetched from API.")
+            full_df = existing_df
+        else:
+            print(f"Fetched {len(new_data)} new rows. Filling missing dates for new data only…")
+            
+            # Only fill missing dates for the NEW data range
+            filled_new = fill_missing_dates(new_data, SYMBOLS)
+            
+            # Simple append - no re-processing of old data
+            full_df = pd.concat([existing_df, filled_new], ignore_index=True)
+            
+            # Remove any duplicates (keep latest)
+            full_df = full_df.drop_duplicates(subset=["date", "symbol"], keep="last")
+            full_df = full_df.sort_values(["symbol", "date"]).reset_index(drop=True)
+
+            full_df.to_csv(CSV_FILENAME, index=False)
+            print(f"Updated CSV cache saved ({len(full_df)} total rows, {len(filled_new)} new).")
 
     print(f"Uploading {len(full_df)} rows to Dune…")
     upload_to_dune_csv(full_df, DUNE_API_KEY, TABLE_NAME)
